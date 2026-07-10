@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iNaturalist 2025 Bioregionalization Viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", Arial, sans-serif; background: #1a2634;
+       display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+       color: #d0e8f5; }
+
+header {
+  background: linear-gradient(135deg, #0f2236 0%, #1e5175 100%);
+  color: white; padding: 10px 22px; display: flex;
+  align-items: center; justify-content: space-between;
+  flex-shrink: 0; border-bottom: 2px solid #2d7fb8;
+}
+header h1 { font-size: 1.15rem; font-weight: 700; }
+header p  { font-size: 0.78rem; opacity: 0.75; margin-top: 2px; }
+.hbadge { background: rgba(255,255,255,0.12); border-radius: 8px;
+          padding: 5px 11px; font-size: 0.75rem; color: #a8d4f0; text-align: right; }
+
+.main { display: flex; flex: 1; overflow: hidden; }
+#map  { flex: 1; height: 100%; background: #12212f; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+#panel {
+  width: 320px; min-width: 290px; background: #0f1e2e; color: #d0e8f5;
+  display: flex; flex-direction: column; border-right: 2px solid #1e4060;
+  overflow-y: auto;
+}
+#panel::-webkit-scrollbar { width: 4px; }
+#panel::-webkit-scrollbar-thumb { background: #2d5a7a; border-radius: 2px; }
+
+.sec { padding: 12px 16px; border-bottom: 1px solid #1a2e40; }
+.sec h3 { font-size: 0.72rem; font-weight: 700; color: #7cc8f8;
+          text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 9px; }
+
+.level-tabs { display: flex; gap: 5px; margin-bottom: 10px; }
+.level-tab {
+  flex: 1; text-align: center; padding: 7px 4px; border-radius: 6px;
+  font-size: 0.72rem; font-weight: 700; cursor: pointer;
+  background: #14283c; color: #7aa8c4; border: 1px solid #1e4060;
+}
+.level-tab.active { background: #1e5175; color: #fff; border-color: #2d7fb8; }
+.level-tab .lk { display: block; font-size: 0.62rem; font-weight: 400; opacity: 0.8; margin-top: 1px; }
+
+.src-toggle { display: flex; gap: 5px; margin-bottom: 4px; }
+.src-btn {
+  flex: 1; text-align: center; padding: 8px 4px; border-radius: 6px;
+  font-size: 0.73rem; font-weight: 600; cursor: pointer;
+  background: #0d1a28; color: #7aa8c4; border: 1px solid #1e4060;
+}
+.src-btn.active { background: #0d2e1a; color: #4caf7a; border-color: #1b7837; }
+
+.fcheck { display: flex; align-items: center; gap: 7px; margin-top: 10px; cursor: pointer; }
+.fcheck input { accent-color: #3de07a; cursor: pointer; }
+.fcheck span  { font-size: 0.72rem; color: #c0d8ec; }
+
+.opacity-row { margin-top: 10px; }
+.opacity-row label { font-size: 0.68rem; color: #7aa8c4; display: block; margin-bottom: 4px; }
+.opacity-row input[type=range] { width: 100%; accent-color: #3de07a; }
+
+.stat-row { display: flex; justify-content: space-between; font-size: 0.72rem;
+            padding: 4px 0; color: #a8c4dc; }
+.stat-row b { color: #e8f4ff; }
+
+.desc { font-size: 0.71rem; line-height: 1.5; color: #8fb0c8; }
+.desc b { color: #c0d8ec; }
+
+/* ── Info panel (click) ─────────────────────────────────────────────────── */
+#info {
+  min-height: 90px; background: #0a1620; border-top: 2px solid #1e4060;
+  padding: 12px 16px; font-size: 0.75rem; color: #a8c4dc;
+}
+#info .ih { font-size: 0.72rem; font-weight: 700; color: #7cc8f8; margin-bottom: 6px; }
+#info .placeholder { color: #4a7090; font-style: italic; }
+#info .irow { display: flex; justify-content: space-between; padding: 2px 0; }
+#info .irow b { color: #e8f4ff; }
+.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+          margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(255,255,255,0.25); }
+
+.legend-box { position: absolute; bottom: 16px; right: 16px; background: rgba(10,22,32,0.88);
+              border: 1px solid #1e4060; border-radius: 8px; padding: 8px 12px;
+              font-size: 0.7rem; color: #a8c4dc; max-width: 230px; z-index: 500; }
+.legend-box b { color: #e8f4ff; }
+
+.leaflet-container { background: #12212f; }
+
+.region-label {
+  background: transparent !important; border: none !important; box-shadow: none !important;
+  color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap;
+  text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000, 0 0 4px #000;
+  pointer-events: none;
+}
+.region-label::before { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>iNaturalist 2025 Bioregionalization Viewer</h1>
+    <p>Plant genera + animal species occurrence composition, GDM-filled vs. official ecological framework</p>
+  </div>
+  <div class="hbadge" id="headerBadge">—</div>
+</header>
+
+<div class="main">
+  <div id="panel">
+    <div class="sec">
+      <h3>Framework level</h3>
+      <div class="level-tabs" id="levelTabs">
+        <div class="level-tab" data-level="ecozone">Ecozones<span class="lk">K=15</span></div>
+        <div class="level-tab" data-level="ecoprovince">Ecoprovinces<span class="lk">K=53</span></div>
+        <div class="level-tab" data-level="ecoregion">Ecoregions<span class="lk">K=194</span></div>
+      </div>
+      <h3>Source</h3>
+      <div class="src-toggle" id="srcToggle">
+        <div class="src-btn" data-src="filled">GDM-filled (estimated)</div>
+        <div class="src-btn" data-src="official">Official (NEF)</div>
+      </div>
+      <label class="fcheck">
+        <input type="checkbox" id="dimGapfilled">
+        <span>Dim gap-filled cells (estimated only)</span>
+      </label>
+      <label class="fcheck">
+        <input type="checkbox" id="showLabels" checked>
+        <span>Show region labels (official only)</span>
+      </label>
+      <div class="opacity-row">
+        <label>Layer opacity</label>
+        <input type="range" id="opacitySlider" min="0.2" max="1" step="0.05" value="0.85">
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>Layer stats</h3>
+      <div id="statsBox"></div>
+    </div>
+
+    <div class="sec">
+      <h3>About</h3>
+      <div class="desc">
+        <b>GDM-filled</b> layers are data-driven bioregions from Ward/Hellinger
+        clustering of 2025 iNaturalist plant-genus + animal-species composition
+        on well-sampled 50&nbsp;km cells, extrapolated to unsampled cells with a
+        Generalized Dissimilarity Model (NPP mean/seasonality + geographic
+        distance).<br><br>
+        <b>Official</b> layers are the National Ecological Framework for Canada
+        boundaries at the matching hierarchy level.<br><br>
+        Colours are matched between estimated and official layers via optimal
+        bipartite assignment (Hungarian algorithm) on cluster&nbsp;&times;&nbsp;region
+        cell overlap, so corresponding regions share a colour where possible.
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1; position:relative;">
+    <div id="map"></div>
+    <div class="legend-box" id="legendBox"></div>
+  </div>
+</div>
+
+<div id="info" style="display:none;"></div>
+
+<script>
+const META = __META_JSON__;
+const DATA = {
+  ecoregion:   { filled: __GEO_ECOREGION_FILLED__,   official: __GEO_ECOREGION_OFFICIAL__ },
+  ecozone:     { filled: __GEO_ECOZONE_FILLED__,     official: __GEO_ECOZONE_OFFICIAL__ },
+  ecoprovince: { filled: __GEO_ECOPROVINCE_FILLED__, official: __GEO_ECOPROVINCE_OFFICIAL__ }
+};
+
+var map = L.map("map", { center: [60, -96], zoom: 4, minZoom: 3, maxZoom: 10 });
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: "abcd", maxZoom: 19
+}).addTo(map);
+
+var state = { level: "ecozone", src: "filled", dim: false, opacity: 0.85, labels: true };
+var currentLayer = null;
+
+function styleFeature(props) {
+  var isGap = state.src === "filled" && props.data_status === "gap-filled";
+  var op = state.opacity;
+  if (state.dim && isGap) op = op * 0.35;
+  return {
+    fillColor: props.color || "#888",
+    fillOpacity: op,
+    color: state.src === "official" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.15)",
+    weight: state.src === "official" ? 0.6 : 0.3
+  };
+}
+
+function popupHtml(props) {
+  if (state.src === "filled") {
+    var status = props.data_status === "sampled"
+      ? "<span style='color:#4caf7a'>directly sampled</span>"
+      : "<span style='color:#f0a830'>GDM gap-filled</span>";
+    return "<div class='ih'><span class='swatch' style='background:" + props.color + "'></span>"
+      + "Cluster " + props.cluster_filled + "</div>"
+      + "<div class='irow'><span>Cell</span><b>" + props.cell_id + "</b></div>"
+      + "<div class='irow'><span>Status</span><b>" + status + "</b></div>"
+      + "<div class='irow'><span>NPP mean (2025)</span><b>" + (props.npp_mean ? props.npp_mean.toFixed(4) : "—") + "</b></div>";
+  } else {
+    return "<div class='ih'><span class='swatch' style='background:" + props.color + "'></span>"
+      + (props.region_name || "Unnamed region") + "</div>";
+  }
+}
+
+function renderLayer() {
+  if (currentLayer) { map.removeLayer(currentLayer); currentLayer = null; }
+  var geo = DATA[state.level][state.src];
+  currentLayer = L.geoJSON(geo, {
+    style: function(f) { return styleFeature(f.properties); },
+    onEachFeature: function(f, layer) {
+      layer.on("mouseover", function() {
+        document.getElementById("info").style.display = "block";
+        document.getElementById("info").innerHTML = popupHtml(f.properties);
+      });
+      layer.on("click", function() {
+        map.fitBounds(layer.getBounds(), { maxZoom: 7 });
+      });
+      if (state.src === "official" && state.labels && f.properties.region_name) {
+        layer.bindTooltip(f.properties.region_name, {
+          permanent: true, direction: "center", className: "region-label"
+        });
+      }
+    }
+  }).addTo(map);
+
+  var m = META[state.level];
+  var srcLabel = state.src === "filled" ? "GDM-filled (estimated)" : "Official (NEF)";
+  document.getElementById("headerBadge").innerHTML =
+    m.label + " &middot; K=" + m.K + " &middot; " + srcLabel;
+
+  var statsHtml = "";
+  if (state.src === "filled") {
+    statsHtml += "<div class='stat-row'><span>Well-sampled cells</span><b>" + m.n_sampled.toLocaleString() + "</b></div>";
+    statsHtml += "<div class='stat-row'><span>Total cells (filled)</span><b>" + m.n_filled.toLocaleString() + "</b></div>";
+    statsHtml += "<div class='stat-row'><span>Gap-filled cells</span><b>" + (m.n_filled - m.n_sampled).toLocaleString() + "</b></div>";
+  } else {
+    statsHtml += "<div class='stat-row'><span>Regions</span><b>" + m.K + "</b></div>";
+    statsHtml += "<div class='stat-row'><span>Source</span><b>NEF Canada</b></div>";
+  }
+  document.getElementById("statsBox").innerHTML = statsHtml;
+
+  document.getElementById("legendBox").innerHTML =
+    "<b>" + m.label + "</b> (K=" + m.K + ")<br>" + srcLabel +
+    (state.src === "filled" ? "<br><span style='color:#f0a830'>&#9632;</span> dimmed = gap-filled" : "");
+}
+
+document.querySelectorAll(".level-tab").forEach(function(el) {
+  el.addEventListener("click", function() {
+    document.querySelectorAll(".level-tab").forEach(function(x) { x.classList.remove("active"); });
+    el.classList.add("active");
+    state.level = el.dataset.level;
+    // K=194 gets too cluttered for labels-on-by-default; smaller Ks keep them on
+    state.labels = el.dataset.level !== "ecoregion";
+    document.getElementById("showLabels").checked = state.labels;
+    renderLayer();
+  });
+});
+document.querySelectorAll(".src-btn").forEach(function(el) {
+  el.addEventListener("click", function() {
+    document.querySelectorAll(".src-btn").forEach(function(x) { x.classList.remove("active"); });
+    el.classList.add("active");
+    state.src = el.dataset.src;
+    renderLayer();
+  });
+});
+document.getElementById("dimGapfilled").addEventListener("change", function(e) {
+  state.dim = e.target.checked;
+  renderLayer();
+});
+document.getElementById("showLabels").addEventListener("change", function(e) {
+  state.labels = e.target.checked;
+  renderLayer();
+});
+document.getElementById("opacitySlider").addEventListener("input", function(e) {
+  state.opacity = parseFloat(e.target.value);
+  renderLayer();
+});
+
+document.querySelector('.level-tab[data-level="ecozone"]').classList.add("active");
+document.querySelector('.src-btn[data-src="filled"]').classList.add("active");
+renderLayer();
+</script>
+</body>
+</html>
